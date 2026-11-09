@@ -5,7 +5,14 @@
 ## 소개
 DriveMate는 음성으로 운전자의 상태를 확인하고, 예상 주행 시간을 구간별로 나누어 주기적으로 컨디션을 재확인하는 적응형 운전 지원 앱입니다. 피로·졸음이 보고되면 휴식을 권고하고, 지원되는 차량 기능 및 내비게이션과 연계해 안전한 정차 장소 안내를 지원합니다.
 
+기능 기준은 [최종 기획안 v2.0](docs/PROJECT_SPEC.md) 1~16장입니다.
+
+개발자 A의 Phase 0·1 결과는 [프로젝트 분석 및 SDK 확인](docs/PHASE_0_1.md), [A/B 개발 경계와 공통 계약](docs/DEVELOPMENT_BOUNDARIES.md)에 정리했습니다. [Phase 2](docs/PHASE_2.md)에서는 음성 실행 제어, 실제 Pleos ON_DEVICE STT/TTS Adapter 및 명시적 Mock을 추가했습니다. [실제 Emulator 검증](docs/PHASE_2_EMULATOR.md)에서 TTS 완료·동시 청취 차단·취소 및 한국어 STT 최종 결과 수신을 확인했습니다. UI 연결은 아직 구현하지 않았습니다.
+
+개발자 A의 [Phase 3](docs/PHASE_3.md)는 순수 Kotlin 응답 분류와 상태 관리입니다. 제한된 문장 사전·회복 재확인·정차 확인 경계를 구현했으며 UI·음성 대화 흐름과의 통합은 후속 단계입니다.
+
 ## 개발 환경
+
 - Android Studio, Kotlin, Android Automotive OS (AAOS)
 - Pleos Connect SDK, Emulator, Virtual Console
 - STT/TTS: 음성 질문·응답
