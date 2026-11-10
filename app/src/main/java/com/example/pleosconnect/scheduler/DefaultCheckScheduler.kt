@@ -22,6 +22,9 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
     private var lastDelivered: Long? = null
     private var lastClock = -1L
     private var sequence = 0L
+    private var pausedForRest = false
+    private var pausedAt = 0L
+    private var pausedRemaining = 0L
 
     @Synchronized override fun onRouteUpdated(route: RouteProgress?) {
         val now = now()
@@ -41,6 +44,15 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
         if (old != null && old.routeId == route.routeId &&
             (route.revision <= old.revision || route.observedAtMillis < old.observedAtMillis)) return
         if (old != null && old.routeId != route.routeId && route.observedAtMillis < old.observedAtMillis) return
+        if (pausedForRest) {
+            if (old != null && old.routeId != route.routeId) retiredRoutes += old.routeId
+            this.route = route
+            arrival = end
+            pausedRemaining = (end - maxOf(pausedAt, route.observedAtMillis)).coerceAtLeast(0)
+            if (millis == 0L) clearTrip()
+            publish()
+            return
+        }
         if (old?.routeId != route.routeId) {
             clearTrip()
             departureConsumed = false
@@ -73,6 +85,7 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
         require(kind != CheckKind.PERIODIC)
         require(delay.isFinite() && delay > Duration.ZERO)
         val now = now()
+        if (pausedForRest) return
         require(delay <= (Long.MAX_VALUE - now).milliseconds)
         val whole = delay.inWholeMilliseconds
         val rounded = whole + if (delay > whole.milliseconds) 1 else 0
@@ -89,6 +102,7 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
 
     @Synchronized override fun takeDue(): List<ScheduledCheck> {
         val now = now()
+        if (pausedForRest) return emptyList()
         if (route == null || now >= arrival) { checks.clear(); publish(); return emptyList() }
         if (lastDelivered?.let { now - it < MINUTE } == true) return emptyList()
         val due = checks.filter { it.dueAtMillis <= now }
@@ -109,6 +123,36 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
 
     @Synchronized override fun cancelAll() { now(); clearTrip(); publish() }
 
+    /** Suspend questions without retiring the active route. Repeated calls do not move the anchor. */
+    @Synchronized fun pauseForRest() {
+        val now = now()
+        if (pausedForRest) return
+        pausedForRest = true
+        pausedAt = now
+        pausedRemaining = if (route == null) 0 else (arrival - now).coerceAtLeast(0)
+        checks.clear()
+        publish()
+    }
+
+    /** Call only after recovery and explicit route-resume consent succeeded. */
+    @Synchronized fun resumeAfterRest(latest: RouteProgress?) {
+        if (!pausedForRest) return
+        onRouteUpdated(latest) // Validate updates while paused; null/arrival remain terminal.
+        if (!pausedForRest) return
+        val saved = route ?: return
+        val remaining = pausedRemaining
+        val now = now()
+        pausedForRest = false
+        route = null // Rebuild without marking the paused route as retired.
+        onRouteUpdated(saved.copy(remaining = remaining.milliseconds, observedAtMillis = now))
+        // Recovery already supplied a condition observation. Do not ask again at departure.
+        departureConsumed = true
+        lastPeriodic = now
+        lastDelivered = now
+        checks.removeAll { it.dueAtMillis <= now }
+        publish()
+    }
+
     @Synchronized override fun cancelFollowUps() {
         now()
         checks.removeAll { it.kind != CheckKind.PERIODIC }
@@ -116,6 +160,8 @@ class DefaultCheckScheduler(private val clock: MonotonicClock) : FollowUpSchedul
     }
 
     private fun clearTrip() {
+        pausedForRest = false
+        pausedRemaining = 0
         route?.let { retiredRoutes += it.routeId }
         route = null
         checks.clear()

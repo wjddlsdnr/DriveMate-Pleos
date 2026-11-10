@@ -22,6 +22,46 @@ class DefaultCheckSchedulerTest {
         val times get() = scheduler.pending.value.filter { it.kind == CheckKind.PERIODIC }.map { it.dueAtMillis / 60_000L }
     }
 
+    @Test fun restPauseFreezesSameRevisionAndResumeSchedulesWithoutDepartureDuplicate() {
+        val f = Fixture(); f.route(); f.scheduler.takeDue(); f.at(10); f.scheduler.pauseForRest()
+        f.scheduler.scheduleFollowUp(CheckKind.RISK_FOLLOW_UP, 1.minutes)
+        f.at(40); assertTrue(f.scheduler.takeDue().isEmpty()); assertTrue(f.times.isEmpty())
+        f.scheduler.resumeAfterRest(RouteProgress("trip", 0, 60.minutes, 0))
+        assertEquals(listOf(56L, 73L), f.times)
+        assertTrue(f.scheduler.takeDue().isEmpty())
+        val due = f.scheduler.pending.value.first().dueAtMillis; f.time = due
+        assertEquals(CheckKind.PERIODIC, f.scheduler.takeDue().single().kind)
+        assertTrue(f.scheduler.takeDue().isEmpty())
+    }
+    @Test fun etaUpdateDuringRestIsRetainedButCannotAskUntilResume() {
+        val f = Fixture(); f.route(); f.scheduler.takeDue(); f.at(10); f.scheduler.pauseForRest()
+        f.at(30); f.route(40, 1); f.at(40)
+        assertTrue(f.scheduler.takeDue().isEmpty()); assertTrue(f.times.isEmpty())
+        f.scheduler.resumeAfterRest(RouteProgress("trip", 1, 40.minutes, 30 * 60_000L))
+        assertEquals(listOf(60L), f.times)
+        f.at(60); assertEquals(CheckKind.PERIODIC, f.scheduler.takeDue().single().kind)
+    }
+    @Test fun repeatedPauseAndResumeDoNotDuplicateOrPostponeQuestions() {
+        val f = Fixture(); f.route(); f.scheduler.takeDue(); f.at(10); f.scheduler.pauseForRest()
+        f.at(20); f.scheduler.pauseForRest(); f.at(40)
+        val route = RouteProgress("trip", 0, 60.minutes, 0)
+        f.scheduler.resumeAfterRest(route); val pending = f.scheduler.pending.value
+        f.at(41); f.scheduler.resumeAfterRest(route); assertEquals(pending, f.scheduler.pending.value)
+    }
+    @Test fun cancellationAndArrivalWhileRestingCannotBeResumedAsOldRoute() {
+        for (arrival in listOf(false, true)) {
+            val f = Fixture(); f.route(); f.scheduler.takeDue(); f.at(10); f.scheduler.pauseForRest()
+            if (arrival) f.route(0, 1) else f.scheduler.onRouteUpdated(null)
+            f.at(40); f.scheduler.resumeAfterRest(RouteProgress("trip", 2, 60.minutes, f.time))
+            f.scheduler.onRouteUpdated(RouteProgress("trip", 3, 60.minutes, f.time))
+            assertTrue(f.scheduler.pending.value.isEmpty()); assertTrue(f.scheduler.takeDue().isEmpty())
+        }
+    }
+    @Test fun newRevisionProvidedOnlyAtResumeRebuildsFromThatEta() {
+        val f = Fixture(); f.route(); f.scheduler.takeDue(); f.at(10); f.scheduler.pauseForRest(); f.at(40)
+        f.scheduler.resumeAfterRest(RouteProgress("trip", 1, 60.minutes, f.time))
+        assertEquals(listOf(60L, 80L), f.times)
+    }
     @Test fun sixtyMinuteTripHasThreeChecksAndNoArrivalQuestion() {
         val f = Fixture(); f.route()
         assertEquals(listOf(0L, 20L, 40L), f.times)

@@ -35,6 +35,7 @@ class DriveMateSession(
     @Volatile private var closed = false
     private var active: Deferred<Unit>? = null
     private var activeSafety = false
+    @Volatile private var restSchedulingPaused = false
     private val initializedTrips = mutableSetOf<String>()
     private val mutableFailure = MutableStateFlow<FailureReason?>(null)
     val failure = mutableFailure.asStateFlow()
@@ -68,7 +69,8 @@ class DriveMateSession(
         }
         companion = LimitedCompanionController(snapshot, normal.status, profiles, foreground, voice) { checkCondition(it) }
         scope.launch { navigation.route.collect { route ->
-            if (driver.status.value.state != DriverState.RESTING) scheduler.onRouteUpdated(route)
+            if (restSchedulingPaused || driver.status.value.state == DriverState.RESTING) scheduler.pauseForRest()
+            scheduler.onRouteUpdated(route)
             if (route == null) { active?.cancel(); scheduler.cancelAll() }
         } }
         scope.launch { combine(driver.status, safety.response) { _, _ -> Unit }.collect { refresh() } }
@@ -112,17 +114,22 @@ class DriveMateSession(
     }
     suspend fun restCommand() = execute(priority = false, preempt = true) {
         rest.onForeground(); rest.command(); refresh()
-        if (driver.status.value.state == DriverState.RESTING) scheduler.cancelAll()
+        if (driver.status.value.state == DriverState.RESTING) {
+            restSchedulingPaused = true
+            scheduler.pauseForRest()
+        }
     }
     suspend fun restoreRest() = execute(priority = false) {
-        rest.onForeground(); if (rest.restore()) scheduler.cancelAll(); refresh()
+        rest.onForeground()
+        if (rest.restore()) { restSchedulingPaused = true; scheduler.pauseForRest() }
+        refresh()
     }
     suspend fun recoveryCheck() = execute(priority = false) { rest.onForeground(); rest.checkRecovery(); refresh() }
     suspend fun resumeAfterRest() = execute(priority = false) {
         rest.onForeground(); rest.resume(); refresh()
         if (rest.status.value.phase == RestPhase.RESUMED) {
-            scheduler.onRouteUpdated(navigation.route.value)
-            scheduler.takeDue() // Recovery already supplied the departure observation.
+            scheduler.resumeAfterRest(navigation.route.value)
+            restSchedulingPaused = false
         }
     }
     suspend fun tick() = execute(priority = scheduler.pending.value.any { it.dueAtMillis <= clock.nowMillis() }) {

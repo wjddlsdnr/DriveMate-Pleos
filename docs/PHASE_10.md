@@ -94,3 +94,22 @@ Phase 8의 withSafetyPriority가 말동무를 정리하며 다른 안전 안내�
 
 변경 파일은 A의 `domain/session/DriveMateSession.kt`, 대응 통합 테스트,
 `docs/PHASE_10.md`, README 네 개뿐이다. 공통 계약과 B 영역은 변경하지 않았다.
+
+## PR #1 후속 수정 — 휴식 후 동일 경로 질문 복원
+
+휴식 시작/복구에서 cancelAll()이 경로 ID를 종료 목록에 넣어 재개 후 예약이 사라지는 결함을
+수정했다. 공통 계약·B 포트/코드는 바꾸지 않고 A 구현에 pauseForRest()/resumeAfterRest()를
+추가했다. cancelAll(), null 경로, 0 ETA는 계속 경로 종료로 처리한다.
+
+- 휴식 일시 정지는 질문/위험 후속 예약을 비우지만 경로를 종료하지 않는다.
+- 같은 revision이면 정지 시점의 남은 시간을 동결한다. 새 revision은 휴식 중에도 검증하여
+  남은 ETA를 갱신하되 질문은 예약하지 않는다. 휴식 시간이 주행 시간으로 차감되지 않는다.
+- 회복 확인 및 명시적 내비 재개 성공 뒤 남은 시간을 재분할한다. 회복 직후 출발 질문은
+  생성하지 않고 이후 구간 질문을 예약한다. 반복 재개 호출은 예약을 바꾸지 않는다.
+- 경로 취소/도착으로 종료된 ID는 재개나 새 revision으로 되살리지 않는다.
+- 변경: DefaultCheckScheduler, DriveMateSession, 두 대응 테스트 및 이 문서만 수정.
+- 검증: assembleDebug + testDebugUnitTest + lintDebug 성공. 전체 338개 테스트 통과
+  (회귀 테스트 신규 8개), 실패/오류 0. Lint 오류 0·기존 경고 24.
+- 가상 시간/Fake로 동일·새 revision의 예약과 실제 후속 질문, 중복 질문 방지,
+  휴식 중 ETA 갱신, 반복 일시 정지/재개, 취소·도착의 종료 동작을 확인했다.
+- Emulator/실차 검증은 이번 수정에서 실행하지 않았다. 기존 실제 음성 기록과 구분한다.

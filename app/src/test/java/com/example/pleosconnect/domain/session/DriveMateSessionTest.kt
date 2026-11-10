@@ -214,6 +214,48 @@ class DriveMateSessionTest {
         val task = launch { f.session.initialCheck() }; runCurrent(); parent.cancel(); runCurrent(); task.join()
         assertFalse(f.listening); f.session.close()
     }
+    private suspend fun TestScope.verifyQuestionAfterRest(newRevision: Boolean) {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.answer("괜찮아", "조용히"); f.session.initialCheck()
+        f.parking = SafeParking.VERIFIED; f.answer("1분"); f.session.restCommand()
+        assertTrue(f.session.pendingChecks.value.isEmpty())
+        advanceTimeBy(30_000)
+        if (newRevision) {
+            f.route.value = f.route.value!!.copy(revision = 2, remaining = 40.minutes, observedAtMillis = currentTime + 10)
+            runCurrent()
+        }
+        assertTrue(f.session.pendingChecks.value.isEmpty())
+        advanceTimeBy(30_000); f.answer("괜찮아", "괜찮아"); f.session.tick()
+        assertEquals(RestPhase.READY_TO_RESUME, f.session.restStatus.value.phase)
+        assertTrue(f.session.pendingChecks.value.isEmpty()); assertEquals(0, f.resumes)
+        f.answer("네"); f.session.resumeAfterRest(); runCurrent()
+        assertEquals(1, f.resumes)
+        val pending = f.session.pendingChecks.value
+        assertTrue("Resume must restore periodic questions", pending.isNotEmpty())
+        assertTrue(pending.all { it.kind == CheckKind.PERIODIC && it.dueAtMillis > currentTime + 10 })
+        val count = f.prompts.size
+        f.session.resumeAfterRest(); f.session.tick()
+        assertEquals(count, f.prompts.size); assertEquals(pending, f.session.pendingChecks.value)
+        val confirmed = f.session.driverStatus.value.lastConfirmedAtMillis!!
+        advanceTimeBy(pending.first().dueAtMillis - (currentTime + 10))
+        f.answer("괜찮아"); f.session.tick()
+        assertEquals(count + 1, f.prompts.size)
+        assertTrue(f.prompts.last().contains("졸리거나 피곤"))
+        assertTrue(f.session.driverStatus.value.lastConfirmedAtMillis!! > confirmed)
+        f.session.tick(); assertEquals(count + 1, f.prompts.size)
+        f.session.close()
+    }
+    @Test fun sameRouteAndRevisionAskAgainAfterRest() = runTest { verifyQuestionAfterRest(false) }
+    @Test fun sameRouteWithNewRevisionDuringRestAsksAgain() = runTest { verifyQuestionAfterRest(true) }
+    @Test fun cancelledRouteDuringRestNeverRecreatesQuestions() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent(); f.answer("괜찮아", "조용히"); f.session.initialCheck()
+        f.parking = SafeParking.VERIFIED; f.answer("1분"); f.session.restCommand()
+        f.route.value = null; runCurrent()
+        advanceTimeBy(60_000); f.answer("괜찮아", "괜찮아"); f.session.tick()
+        f.session.resumeAfterRest(); assertEquals(0, f.resumes); assertTrue(f.session.pendingChecks.value.isEmpty())
+        val count = f.prompts.size; advanceTimeBy(30 * 60_000); f.session.tick()
+        assertEquals(count, f.prompts.size); f.session.close()
+    }
     @Test fun ordinaryTickDoesNotInterruptSafetyDialogue() = runTest {
         val f = Fixture(backgroundScope, testScheduler); runCurrent(); f.gate = CompletableDeferred()
         val check = launch { f.session.initialCheck() }; runCurrent(); val count = f.prompts.size
