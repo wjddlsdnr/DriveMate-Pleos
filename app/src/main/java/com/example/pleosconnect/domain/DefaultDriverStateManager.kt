@@ -1,6 +1,5 @@
 package com.example.pleosconnect.domain
 
-import com.example.pleosconnect.contract.logic.DriverStateManager
 import com.example.pleosconnect.contract.logic.MonotonicClock
 import com.example.pleosconnect.contract.model.ConditionReport
 import com.example.pleosconnect.contract.model.DriverState
@@ -17,12 +16,20 @@ class DefaultDriverStateManager(
     private val clock: MonotonicClock,
     private val parking: SafeParkingCheck = SafeParkingCheck { SafeParking.UNKNOWN },
     private val classifier: ConditionClassifier = ConditionClassifier(),
-) : DriverStateManager {
+) : RiskStateManager {
     private val mutableStatus = MutableStateFlow(DriverStatus())
     override val status = mutableStatus.asStateFlow()
     private var lastEventAt = -1L
     private var riskFloor = 0
     private var normalConfirmations = 0
+
+    @Synchronized override fun onRepeatedNoResponse() {
+        if (status.value.state == DriverState.RESTING ||
+            status.value.report != ConditionReport.UNCONFIRMED || status.value.consecutiveNoResponses < 2) return
+        riskFloor = 3
+        normalConfirmations = 0
+        mutableStatus.value = status.value.copy(state = DriverState.HIGH_RISK, followUpRequired = true)
+    }
 
     @Synchronized override fun onConditionAnswer(answer: RecognitionResult, receivedAtMillis: Long) {
         require(receivedAtMillis >= 0)
