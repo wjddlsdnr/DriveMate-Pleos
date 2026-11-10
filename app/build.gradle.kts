@@ -37,6 +37,10 @@ android {
 }
 
 dependencies {
+    implementation("ai.pleos.playground:SpeechToText:3.3.1")
+    implementation("ai.pleos.playground:TextToSpeech:3.3.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    implementation(libs.kotlinx.coroutines.core)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
