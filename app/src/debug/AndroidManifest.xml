@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Only the generated instrumented-test tone cache; absent from release. -->
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.debug.audio"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/debug_audio_paths" />
+        </provider>
+    </application>
+</manifest>
