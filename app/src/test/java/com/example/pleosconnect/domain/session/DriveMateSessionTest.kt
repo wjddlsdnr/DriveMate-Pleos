@@ -90,6 +90,17 @@ class DriveMateSessionTest {
             object : RestSessionStore { override fun load() = checkpoint; override fun save(value: RestCheckpoint?) { checkpoint = value } })
         fun answer(vararg values: String) { answers.addAll(values.map { RecognitionResult.Text(it) }) }
     }
+    @Test fun contextualNoAndDeclinedModeConnectToLocalPlayback() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.profile.value = f.profile.value!!.copy(previousMode = DrivingMode.COMPANION)
+        f.answer("아니요", "아니요", "로컬 파일 틀어줘")
+        f.session.initialCheck()
+        assertEquals(DriverState.NORMAL, f.session.driverStatus.value.state)
+        assertEquals(DrivingMode.MUSIC, f.session.modeStatus.value.mode)
+        assertEquals(MediaCommand.PlayMusic("로컬 파일"), f.mediaCommands.last())
+        assertEquals(3, f.events.count { it == "listen" })
+        f.session.close()
+    }
     @Test fun fullFakeTripFromDepartureThroughRestAndExplicitResume() = runTest {
         val f = Fixture(backgroundScope, testScheduler); runCurrent()
         f.answer("괜찮아", "조용히"); f.session.initialCheck()

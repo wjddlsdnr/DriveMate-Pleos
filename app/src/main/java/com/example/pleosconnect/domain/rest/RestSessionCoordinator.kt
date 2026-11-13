@@ -130,7 +130,7 @@ class RestSessionCoordinator(
         repeat(2) {
             val answer = ask("현재 졸리거나 피곤하신가요?")
             delay(1) // Do not reuse the lifecycle boundary timestamp.
-            driver.onConditionAnswer(answer, now())
+            driver.onConditionAnswer(com.example.pleosconnect.domain.ConditionQuestion.FATIGUE.interpret(answer), now())
             record(answer)
             val current = driver.status.value
             if (current.report != ConditionReport.NORMAL) return

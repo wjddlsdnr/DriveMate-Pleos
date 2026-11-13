@@ -84,5 +84,5 @@ class PleosVoiceSmokeTest {
 
     private fun redacted(result: com.example.pleosconnect.contract.voice.RecognitionResult): String =
         if (result is com.example.pleosconnect.contract.voice.RecognitionResult.Text)
-            "Text(redacted,length=${result.value.length},matchesTestPhrase=${result.value.replace(" ", "").trimEnd('.', '!', '?') == "괜찮아요"})" else result.toString()
+            "Text(redacted,length=${result.value.length},matchesTestPhrase=${result.value.replace(" ", "").trimEnd('.', '!', '?') == "괜찮아요"},condition=${com.example.pleosconnect.domain.ConditionClassifier().classify(result.value)},afterTerminalPunctuation=${com.example.pleosconnect.domain.ConditionClassifier().classify(result.value.trim().trimEnd('?', '？', ',', '，', '.', '!', '。', '！'))})" else result.toString()
 }

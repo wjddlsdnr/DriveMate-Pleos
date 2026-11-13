@@ -99,9 +99,9 @@ class DriveMateSession(
     suspend fun conditionCheck(kind: CheckKind = CheckKind.RISK_FOLLOW_UP) = execute(priority = true) { checkCondition(kind) }
     private suspend fun checkCondition(kind: CheckKind) {
         if (driver.status.value.state == DriverState.RESTING || navigation.route.value == null) return
-        val answer = ask(if (kind == CheckKind.RECOVERY) "현재 상태가 나아지셨나요? 졸리거나 피곤하신가요?" else "현재 졸리거나 피곤하신가요?")
+        val answer = ask("현재 졸리거나 피곤하신가요?")
         delay(1)
-        safety.onConditionAnswer(answer, clock.nowMillis())
+        safety.onConditionAnswer(com.example.pleosconnect.domain.ConditionQuestion.FATIGUE.interpret(answer), clock.nowMillis())
         refresh()
         if (snapshot.value.restStopNeeded) guidance.request()
     }

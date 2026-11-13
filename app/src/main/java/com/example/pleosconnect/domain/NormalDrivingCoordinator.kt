@@ -32,6 +32,8 @@ class NormalDrivingCoordinator(
     private val switching = Mutex()
     private var active: Deferred<Unit>? = null
     private var closed = false
+    private var clarificationUsed = false
+    private var tasteAsked = false
     private var lastReceived = -1L
     private var lastClock = -1L
     private val offeredProfiles = mutableSetOf<String?>()
@@ -84,6 +86,8 @@ class NormalDrivingCoordinator(
                 try {
                     checkFresh(id)
                     mutableStatus.value = status.value.copy(failure = null, preferencesSaved = false)
+                    clarificationUsed = false
+                    tasteAsked = false
                     block(id)
                 } catch (cancelled: CancellationException) {
                     val stopped = withContext(NonCancellable) { call { media.execute(MediaCommand.Stop) } }
@@ -126,7 +130,8 @@ class NormalDrivingCoordinator(
                 var query = command.query
                 if (command.mode == DrivingMode.MUSIC && query == null) query = preferredQuery(profiles.selectedProfile.value)
                 if (command.mode == DrivingMode.MUSIC && query == null) {
-                    if (!allowTaste) { clarify(id); return }
+                    if (!allowTaste || tasteAsked) { clarify(id); return }
+                    tasteAsked = true
                     val reply = ask("어떤 음악을 좋아하시나요? 좋아하는 장르나 가수를 말씀해 주세요.", id) ?: return
                     if (reply !is RecognitionResult.Text) { speechFailure(reply); return }
                     val preference = parser.preference(reply.value)
@@ -193,7 +198,14 @@ class NormalDrivingCoordinator(
     }
     private suspend fun clarify(id: String?) {
         checkFresh(id)
-        val result = call(30.seconds) { voice.speak("원하시는 모드를 다시 말씀해 주세요. 조용한 운전, 음악, 뉴스, 말동무 중 선택할 수 있습니다.") }
+        if (!clarificationUsed) {
+            clarificationUsed = true
+            val reply = ask("원하시는 모드를 다시 말씀해 주세요. 조용한 운전, 음악, 뉴스, 말동무 중 선택할 수 있습니다.", id) ?: return
+            if (reply is RecognitionResult.Text) execute(parser.parse(reply.value), id, true)
+            else speechFailure(reply)
+            return
+        }
+        val result = call(30.seconds) { voice.speak("선택을 확인하지 못했습니다. 모드 선택을 종료합니다.") }
         checkFresh(id)
         if (result is OperationResult.Failure) failed(result.reason)
         else mutableStatus.value = status.value.copy(phase = NormalModePhase.CLARIFY)
