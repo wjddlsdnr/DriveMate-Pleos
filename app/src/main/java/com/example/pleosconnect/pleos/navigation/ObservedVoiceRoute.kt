@@ -17,16 +17,35 @@ class ObservedVoiceRoute(private val clock: MonotonicClock) : NavigationControll
     private var destinationAt: Long? = null
     private var destination: NavigationEvent.Destination? = null
     private var identity: NavigationPlace? = null
-    fun clear() { activeAt = null; destinationAt = null; destination = null; identity = null; mutable.value = null }
+    private var location: RestSearchContext? = null
+    fun clear() { activeAt = null; destinationAt = null; destination = null; identity = null; mutable.value = null; location = null }
+    fun searchContext(): RestSearchContext? {
+        expire()
+        val context = location ?: return null
+        val current = route.value ?: return null
+        if (context.routeId != current.routeId || context.routeRevision != current.revision ||
+            clock.nowMillis() - context.observedAtMillis !in 0..5_000) {
+            location = null
+            return null
+        }
+        return context
+    }
     fun expire() {
         val now = clock.nowMillis()
         if (activeAt?.let { now - it in 0..10_000 } != true || destinationAt?.let { now - it in 0..10_000 } != true) {
-            mutable.value = null; identity = null
+            mutable.value = null; identity = null; location = null
         }
     }
     fun accept(event: NavigationEvent) {
         val now = clock.nowMillis()
         when (event) {
+            is NavigationEvent.Location -> {
+                expire()
+                val current = route.value
+                location = if (current != null && event.value.valid())
+                    RestSearchContext(current.routeId, current.revision, event.value, now) else null
+                return
+            }
             NavigationEvent.Ended, NavigationEvent.RouteStarted, NavigationEvent.RoutingCompleted,
             NavigationEvent.WaypointsChanged, is NavigationEvent.Failed -> { clear(); return }
             is NavigationEvent.RouteState -> {
@@ -44,9 +63,11 @@ class ObservedVoiceRoute(private val clock: MonotonicClock) : NavigationControll
         val eta = destination ?: return
         val previous = route.value
         if (identity != eta.place || previous == null) {
+            location = null
             identity = eta.place
             mutable.value = RouteProgress("observed-${UUID.randomUUID()}", 1, eta.remainingSeconds.seconds, now)
         } else if (abs(previous.remaining.inWholeMilliseconds - (now - previous.observedAtMillis) - eta.remainingSeconds * 1000L) > 60_000) {
+            location = null
             mutable.value = previous.copy(revision = previous.revision + 1, remaining = eta.remainingSeconds.seconds, observedAtMillis = now)
         }
     }

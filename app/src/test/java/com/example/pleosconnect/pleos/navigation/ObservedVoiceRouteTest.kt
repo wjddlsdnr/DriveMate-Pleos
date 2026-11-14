@@ -11,6 +11,45 @@ class ObservedVoiceRouteTest {
     private var now = 100L
     private val subject = ObservedVoiceRoute(MonotonicClock { now })
     private val place = NavigationPlace("fixture", 37.5, 127.0)
+    private val location = NavigationLocation(37.5, 127.0, 42.0, "native-fixture", 0)
+    private fun guiding() {
+        subject.accept(NavigationEvent.RouteState(false, true, guidanceMode = true))
+        subject.accept(NavigationEvent.Destination(place, 3_600))
+    }
+    @Test fun locationNeedsFreshRouteAndNeverProvesCorrespondence() {
+        subject.accept(NavigationEvent.Location(location)); assertNull(subject.searchContext())
+        guiding(); subject.accept(NavigationEvent.Location(location))
+        val context = requireNotNull(subject.searchContext())
+        assertEquals(subject.route.value!!.routeId, context.routeId)
+        assertEquals(subject.route.value!!.revision, context.routeRevision)
+        assertFalse(context.routeCorrespondenceVerified); assertFalse(context.headingUnitVerified)
+        assertFalse(context.toString().contains("native-fixture"))
+        assertFalse(location.toString().contains("37.5"))
+    }
+    @Test fun expiredLocationCannotBeReusedByFreshDestination() {
+        guiding(); subject.accept(NavigationEvent.Location(location))
+        now += 5_001
+        subject.accept(NavigationEvent.RouteState(false, true, guidanceMode = true))
+        subject.accept(NavigationEvent.Destination(place, 3_595))
+        assertNull(subject.searchContext())
+    }
+    @Test fun rerouteAndEtaRevisionRequireNewLocation() {
+        guiding(); subject.accept(NavigationEvent.Location(location))
+        subject.accept(NavigationEvent.Destination(place, 1_800)); assertNull(subject.searchContext())
+        subject.accept(NavigationEvent.Location(location)); assertNotNull(subject.searchContext())
+        subject.accept(NavigationEvent.RoutingCompleted); assertNull(subject.searchContext())
+    }
+    @Test fun invalidOrTerminatedLocationIsNeverExposed() {
+        guiding()
+        for (invalid in listOf(location.copy(latitude = Double.NaN), location.copy(longitude = 181.0),
+            location.copy(rawHeading = Double.POSITIVE_INFINITY), location.copy(nativeRouteId = ""),
+            location.copy(currentRouteIndex = -1))) {
+            subject.accept(NavigationEvent.Location(invalid)); assertNull(subject.searchContext())
+        }
+        subject.accept(NavigationEvent.Location(location)); subject.accept(NavigationEvent.Ended)
+        assertNull(subject.searchContext())
+        subject.accept(NavigationEvent.Location(location)); assertNull(subject.searchContext())
+    }
     @Test fun existingGuidanceIsObservableWithoutAnyDestinationRequest() {
         subject.accept(NavigationEvent.Destination(place, 3_600)); assertNull(subject.route.value)
         subject.accept(NavigationEvent.RouteState(true, true)); assertNotNull(subject.route.value)

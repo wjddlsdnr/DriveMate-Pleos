@@ -7,6 +7,16 @@ import java.text.Normalizer
 enum class ConditionQuestion {
     FATIGUE, WELLBEING, UNSPECIFIED;
 
+    /** Punctuation may be supplied by STT; ask again instead of treating a question as reassurance. */
+    fun needsNormalConfirmation(answer: RecognitionResult): Boolean {
+        if (answer !is RecognitionResult.Text) return false
+        val value = answer.value.trim()
+        if (!value.endsWith('?') && !value.endsWith('？')) return false
+        val classifier = ConditionClassifier()
+        return classifier.classify(value) == com.example.pleosconnect.contract.model.ConditionReport.UNCONFIRMED &&
+            classifier.classify(value.trimEnd('?', '？')) == com.example.pleosconnect.contract.model.ConditionReport.NORMAL
+    }
+
     fun interpret(answer: RecognitionResult): RecognitionResult {
         if (answer !is RecognitionResult.Text) return answer
         val key = Normalizer.normalize(answer.value, Normalizer.Form.NFC)

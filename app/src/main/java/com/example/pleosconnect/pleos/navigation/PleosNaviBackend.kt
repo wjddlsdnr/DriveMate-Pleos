@@ -26,6 +26,9 @@ class PleosNaviBackend(context: Context, private val scope: CoroutineScope,
                 if (token == epoch && helper === sdk) listener(event)
             } }
             val events = object : NaviHelperEventListener {
+                override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) = deliver(
+                    NavigationEvent.Location(NavigationLocation(currentLocationInfo.latitude, currentLocationInfo.longitude,
+                        currentLocationInfo.heading, currentLocationInfo.routeId, currentLocationInfo.currentRouteIndex)))
                 override fun onRouteStarted(routeStartInfo: RouteStartInfo) = deliver(NavigationEvent.RouteStarted)
                 override fun onRoutingCompleted() = deliver(NavigationEvent.RoutingCompleted)
                 override fun onReRouteEnded() = deliver(NavigationEvent.RoutingCompleted)
@@ -42,7 +45,7 @@ class PleosNaviBackend(context: Context, private val scope: CoroutineScope,
                     // Read-only queries may confirm guidance evidence even when isRouting conflicts.
                     // Mutation acknowledgement below the controller still requires strict active=true.
                     if (guiding && routeStateInfo.termsAgreement) scope.launch {
-                        if (token == epoch && helper === sdk) { sdk.getDestinationInfo(); sdk.getWaypointInfo() }
+                        if (token == epoch && helper === sdk) { sdk.getDestinationInfo(); sdk.getWaypointInfo(); sdk.getCurrentLocationInfo() }
                     }
                 }
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) = deliver(NavigationEvent.Destination(

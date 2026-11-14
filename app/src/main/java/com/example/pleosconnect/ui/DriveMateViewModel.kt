@@ -21,6 +21,7 @@ class DriveMateViewModel(
     private val liveMedia: LiveMediaIntegration? = null,
     private val localAudio: com.example.pleosconnect.data.media.LocalAudioPlayer? = null,
     private val liveVoice: LiveVoiceIntegration? = null,
+    nearbyTransport: com.example.pleosconnect.pleos.navigation.NearbyDiscoveryTransport? = null,
     factory: (CoroutineScope, com.example.pleosconnect.contract.model.DriverPreferences, SimulationScenario) -> DriveMateAppGraph =
         { scope, profile, scenario ->
             liveNavigation?.bindProfile(profile.profileId.takeUnless { it == "unselected" })
@@ -38,6 +39,18 @@ class DriveMateViewModel(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val owner = DriveMateSessionOwner(scope, factory, catalog = catalog)
     val state = owner.state
+    private val nearby = nearbyTransport?.let { transport ->
+        com.example.pleosconnect.pleos.navigation.NearbyDiscoveryController(scope,
+            MonotonicClock { SystemClock.elapsedRealtime() },
+            { liveNavigation?.takeIf { it.enabled }?.controller?.observedVoiceRoute?.searchContext() },
+            { state.value.foreground && state.value.selectedProfileId != null && liveNavigation?.enabled == true &&
+                liveVoice?.enabled?.value != true && mediaSetupAllowed(vehicleState.value) }, transport)
+    }
+    val nearbyAvailable = nearby != null
+    val nearbyState = nearby?.state ?: MutableStateFlow(com.example.pleosconnect.pleos.navigation.NearbyDiscoveryState())
+    fun prepareNearby(token: String) { nearby?.prepare(token) }
+    fun confirmNearby() { nearby?.confirmFromUi() }
+    fun cancelNearby() { nearby?.cancel() }
     val liveVoiceAvailable = liveVoice != null
     val liveVoiceEnabled = liveVoice?.enabled ?: MutableStateFlow(false)
     val voiceConnectionNotice = MutableStateFlow<String?>(null)
@@ -140,6 +153,7 @@ class DriveMateViewModel(
     }
     fun setForeground(value: Boolean) {
         if (!value) {
+            nearby?.cancel()
             if (liveVoiceEnabled.value) voiceConnectionNotice.value = "앱이 화면을 벗어나 실제 음성 연결을 껐습니다. 돌아온 뒤 다시 켜 주세요."
             liveVoice?.setEnabled(false); vehicleControl?.suspendCommands(); liveMedia?.suspendCommands(); localAudio?.background()
         }
@@ -147,10 +161,11 @@ class DriveMateViewModel(
     }
     private fun canEnableVoice() = !liveVoiceEnabled.value && voiceSetupRequirements(state.value.foreground,
         liveNavigation?.enabled == true, state.value.selectedProfileId, mediaState.value, localAudioState.value, vehicleState.value).isEmpty()
-    fun setLiveVoice(value: Boolean) { if (!value) liveVoice?.setEnabled(false); events.trySend(Event.VoiceMode(value)) }
+    fun setLiveVoice(value: Boolean) { nearby?.cancel(); if (!value) liveVoice?.setEnabled(false); events.trySend(Event.VoiceMode(value)) }
     fun voiceCheck(initial: Boolean) { events.trySend(Event.VoiceCheck(initial)) }
     fun act(value: SimulationAction) { events.trySend(Event.Action(value)) }
     private suspend fun changeProfile(block: suspend () -> Unit) {
+        nearby?.cancel()
         vehicleControl?.stop()
         liveVoice?.setEnabled(false)
         if (liveMedia?.voiceReady == true) liveMedia.executeFromVoice(com.example.pleosconnect.contract.integration.MediaCommand.Stop)
@@ -161,8 +176,8 @@ class DriveMateViewModel(
         liveMedia?.bindProfile(state.value.selectedProfileId)
         liveNavigation?.afterProfileChange()
     }
-    fun setLiveNavigation(enabled: Boolean) { events.trySend(Event.NavigationMode(enabled)) }
-    fun setVehicleRead(enabled: Boolean) { events.trySend(Event.VehicleReadMode(enabled)) }
+    fun setLiveNavigation(enabled: Boolean) { nearby?.cancel(); events.trySend(Event.NavigationMode(enabled)) }
+    fun setVehicleRead(enabled: Boolean) { nearby?.cancel(); events.trySend(Event.VehicleReadMode(enabled)) }
     fun prepareVehicleControl() { events.trySend(Event.PrepareVehicleControl) }
     fun prepareVehicleSetting(key: com.example.pleosconnect.pleos.vehicle.VehicleSettingKey, target: Double) { events.trySend(Event.PrepareSetting(key, target)) }
     fun restoreVehicleSetting(id: String) { events.trySend(Event.RestoreSetting(id)) }
@@ -178,10 +193,11 @@ class DriveMateViewModel(
     fun deleteProfile(id: String) { events.trySend(Event.DeleteProfile(id)) }
     fun reloadProfiles() { events.trySend(Event.ReloadProfiles) }
     fun reset(scenario: SimulationScenario = state.value.scenario, switchProfile: Boolean = false) {
+        nearby?.cancel()
         events.trySend(Event.Reset(scenario, switchProfile))
     }
     /** Closing discards pending commands; cleanup is never launched into a cancelled viewModelScope. */
-    fun shutdown() { liveVoice?.setEnabled(false); vehicleControl?.suspendCommands(); liveMedia?.background(); localAudio?.background(); events.cancel(); worker.cancel() }
+    fun shutdown() { nearby?.cancel(); liveVoice?.setEnabled(false); vehicleControl?.suspendCommands(); liveMedia?.background(); localAudio?.background(); events.cancel(); worker.cancel() }
     suspend fun closeAndJoin() { shutdown(); worker.join() }
     override fun onCleared() { shutdown() }
 }

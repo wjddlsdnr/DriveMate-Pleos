@@ -36,6 +36,17 @@ function New-TmapPlaceRequestUri {
         [uri]::EscapeDataString($keywordValue) + '&reqCoordType=WGS84GEO&resCoordType=WGS84GEO&multiPoint=Y&page=' + $Page + '&count=' + $Count)
 }
 
+function New-TmapNearbyRequestUri {
+    param([Parameter(Mandatory)][double]$Latitude, [Parameter(Mandatory)][double]$Longitude,
+        [ValidateRange(1,10)][int]$RadiusKm = 5)
+    $lat = Read-Coordinate $Latitude -90 90
+    $lon = Read-Coordinate $Longitude -180 180
+    $culture = [Globalization.CultureInfo]::InvariantCulture
+    $baseUri = New-TmapPlaceRequestUri -Keyword '휴게소' -Count 20
+    return [uri]($baseUri.AbsoluteUri + '&searchtypCd=R&radius=' + $RadiusKm +
+        '&centerLat=' + $lat.ToString('R', $culture) + '&centerLon=' + $lon.ToString('R', $culture))
+}
+
 function ConvertFrom-ExRestPage {
     param([Parameter(Mandatory)]$Data, [Parameter(Mandatory)][int]$ExpectedPage,
         [Parameter(Mandatory)][int]$ExpectedRows)
@@ -79,8 +90,11 @@ function ConvertFrom-TmapPlacePage {
     $rows = Read-Integer (Read-Field $info 'count')
     $items = Read-Field (Read-Field $info 'pois') 'poi'
     if ($null -eq $items -and $total -eq 0) { $items = @() }
-    if ($page -ne $ExpectedPage -or $rows -ne $ExpectedRows -or $rows -lt 1 -or $items -isnot [array]) { throw 'Invalid page metadata.' }
-    $expectedCount = [Math]::Min($rows, [Math]::Max(0, $total - ($page - 1) * $rows))
+    $expectedCount = [Math]::Min($ExpectedRows, [Math]::Max(0, $total - ($page - 1) * $ExpectedRows))
+    # TMAP may report actual returned count for a short page, rather than echoing requested count.
+    # Still require the complete expected page; never accept arbitrary truncated results.
+    if ($page -ne $ExpectedPage -or $rows -notin @($ExpectedRows, $expectedCount) -or $rows -lt 0 -or
+        $items -isnot [array]) { throw 'Invalid page metadata.' }
     if ($items.Count -ne $expectedCount) { throw 'Incomplete page.' }
     $records = [Collections.Generic.List[object]]::new()
     $rejected = 0
@@ -168,18 +182,38 @@ function Invoke-ExRestCatalog {
 function Invoke-TmapPlaceSearch {
     param([Parameter(Mandatory)][string]$ConfigPath, [string]$Keyword = '휴게소',
         [ValidateRange(1,200)][int]$Page = 1, [ValidateRange(1,200)][int]$Rows = 20,
-        [scriptblock]$Transport)
+        [scriptblock]$Transport, [hashtable]$Nearby)
+    $diagnosticStage = 'Configuration'
     try {
         if (-not (Get-RestApiKeyStatus -Path $ConfigPath).TmapConfigured) { throw 'Missing configuration.' }
         $key = (Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json).tmapAppKey
-        $uri = New-TmapPlaceRequestUri -Keyword $Keyword -Page $Page -Count $Rows
+        $diagnosticStage = 'RequestUri'
+        if ($null -ne $Nearby) {
+            if ($Page -ne 1 -or $Rows -ne 20) { throw 'Invalid nearby paging.' }
+            $uri = New-TmapNearbyRequestUri -Latitude $Nearby.Latitude -Longitude $Nearby.Longitude -RadiusKm 5
+        } else { $uri = New-TmapPlaceRequestUri -Keyword $Keyword -Page $Page -Count $Rows }
+        $diagnosticStage = 'Transport'
         $response = if ($null -ne $Transport) { & $Transport $uri $key } else { Invoke-PlacesJson -Uri $uri -AppKey $key }
         if ($response.Status -ne 'JsonReceived') { return [pscustomobject]@{ Provider = 'TMAP'; Status = $response.Status; Total = $null; Records = @() } }
+        $diagnosticStage = 'ResponseSchema'
         $result = ConvertFrom-TmapPlacePage -Data $response.Data -ExpectedPage $Page -ExpectedRows $Rows
         return [pscustomobject]@{ Provider = 'TMAP'; Status = $(if ($result.Rejected -eq 0) {'PageValidated'} else {'DataRejected'});
             Total = $result.Total; Page = $Page; Rejected = $result.Rejected;
             Records = @(if ($result.Rejected -eq 0) { $result.Records }) }
-    } catch { return [pscustomobject]@{ Provider = 'TMAP'; Status = 'InvalidDataOrConfiguration'; Total = $null; Records = @() } }
+    } catch {
+        $schema = $null
+        if ($diagnosticStage -ceq 'ResponseSchema') {
+            $info = Read-Field $response.Data 'searchPoiInfo'
+            $items = Read-Field (Read-Field $info 'pois') 'poi'
+            $schema = [pscustomobject]@{
+                CountMatchesRequested = (Read-Field $info 'count') -eq $Rows
+                CountMatchesTotal = (Read-Field $info 'count') -eq (Read-Field $info 'totalCount')
+                ItemsAreArray = $items -is [array]
+                SingleItemObject = $null -ne $items -and $items -isnot [array]
+            }
+        }
+        return [pscustomobject]@{ Provider = 'TMAP'; Status = 'InvalidDataOrConfiguration'; DiagnosticStage = $diagnosticStage; Schema = $schema; Total = $null; Records = @() }
+    }
 }
 
-Export-ModuleMember -Function New-TmapPlaceRequestUri, ConvertFrom-ExRestPage, ConvertFrom-TmapPlacePage, Invoke-ExRestCatalog, Invoke-TmapPlaceSearch
+Export-ModuleMember -Function New-TmapPlaceRequestUri, New-TmapNearbyRequestUri, ConvertFrom-ExRestPage, ConvertFrom-TmapPlacePage, Invoke-ExRestCatalog, Invoke-TmapPlaceSearch

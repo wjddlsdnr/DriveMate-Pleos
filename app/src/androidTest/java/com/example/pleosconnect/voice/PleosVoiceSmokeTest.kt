@@ -46,7 +46,7 @@ class PleosVoiceSmokeTest {
         }
         try {
             when (scenario) {
-                "speak" -> record("speakResult=${service.speak("드라이브메이트 음성 테스트입니다.")}")
+                "speak" -> record("speakResult=${service.speak("쉼길 음성 테스트입니다.")}")
                 "listen" -> record("listenResult=${redacted(service.listen(40.seconds))}")
                 "ask" -> {
                     val result = service.ask("음성 테스트입니다. 지금 괜찮아요라고 말씀해 주세요.", 40.seconds)

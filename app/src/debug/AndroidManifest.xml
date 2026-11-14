@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:networkSecurityConfig="@xml/debug_network_security">
         <!-- Only the generated instrumented-test tone cache; absent from release. -->
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.debug.audio"

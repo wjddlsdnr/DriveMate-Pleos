@@ -52,7 +52,9 @@ class MainActivity : ComponentActivity() {
                     vehicleControl = LiveVehicleControlIntegration.create(application),
                     liveMedia = mediaIntegration,
                     localAudio = localAudio,
-                    liveVoice = com.example.pleosconnect.integration.LiveVoiceIntegration(application, localAudio, mediaIntegration)) as T
+                    liveVoice = com.example.pleosconnect.integration.LiveVoiceIntegration(application, localAudio, mediaIntegration),
+                    nearbyTransport = if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+                        com.example.pleosconnect.pleos.navigation.DebugNearbyTransport() else null) as T
             }
         })[DriveMateViewModel::class.java]
     }
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
             val local by model.localAudioState.collectAsState()
             val realVoice by model.liveVoiceEnabled.collectAsState()
             val voiceNotice by model.voiceConnectionNotice.collectAsState()
+            val nearby by model.nearbyState.collectAsState()
             PleosConnectTheme {
                 DriveMateScreen(state, model::act, { model.reset(it) }, { model.reset(switchProfile = true) },
                     model::registerProfile, model::selectProfile, model::saveProfile, model::deleteProfile, model::reloadProfiles,
@@ -76,7 +79,8 @@ class MainActivity : ComponentActivity() {
                     model::restoreVehicleSetting, model::confirmVehicleSetting, model::cancelVehicleSetting, model::stopVehicleControl,
                     media, model.mediaActions, local, ::chooseAudio, model::playLocalAudio, model::stopLocalAudio,
                     if (com.example.pleosconnect.data.media.DebugAudioSample.available) ::chooseTestAudio else null,
-                    model.liveVoiceAvailable, realVoice, model::setLiveVoice, model::voiceCheck, voiceNotice)
+                    model.liveVoiceAvailable, realVoice, model::setLiveVoice, model::voiceCheck, voiceNotice,
+                    model.nearbyAvailable, nearby, model::prepareNearby, model::confirmNearby, model::cancelNearby)
             }
         }
     }

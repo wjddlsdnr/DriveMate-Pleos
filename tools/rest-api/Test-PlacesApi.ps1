@@ -92,6 +92,13 @@ try {
     Assert-Rejected { ConvertFrom-TmapPlacePage ([pscustomobject]@{error=[pscustomobject]@{code='INVALID_API_KEY'}}) 1 20 }
     $empty = [pscustomobject]@{searchPoiInfo=[pscustomobject]@{totalCount='0';page='1';count='20'}}
     Assert-Equal 0 (ConvertFrom-TmapPlacePage $empty 1 20).Records.Count
+    $empty.searchPoiInfo.count = '0'
+    Assert-Equal 0 (ConvertFrom-TmapPlacePage $empty 1 20).Records.Count
+    $tmapItem.frontLat = '37.4'
+    $tmap.searchPoiInfo.count = '1'
+    Assert-Equal 1 (ConvertFrom-TmapPlacePage $tmap 1 20).Records.Count
+    $tmap.searchPoiInfo.totalCount = '2'
+    Assert-Rejected { ConvertFrom-TmapPlacePage $tmap 1 20 }
     $denied = Invoke-TmapPlaceSearch -ConfigPath $file -Transport { param($uri,$key) [pscustomobject]@{Status='InvalidApiKey';Data=$null} }
     Assert-Equal 'InvalidApiKey' $denied.Status
     Assert-Equal 0 $denied.Records.Count

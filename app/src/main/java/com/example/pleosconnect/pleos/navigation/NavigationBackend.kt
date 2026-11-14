@@ -11,6 +11,7 @@ data class NavigationPlace(val name: String, val latitude: Double, val longitude
 }
 
 sealed interface NavigationEvent {
+    data class Location(val value: NavigationLocation) : NavigationEvent
     data object RouteStarted : NavigationEvent
     data object RoutingCompleted : NavigationEvent
     data object WaypointsChanged : NavigationEvent
@@ -20,6 +21,16 @@ sealed interface NavigationEvent {
     data class Waypoints(val places: List<NavigationPlace>) : NavigationEvent
     data class SavedDestinations(val places: List<NavigationPlace>) : NavigationEvent
     data class Failed(val reason: FailureReason) : NavigationEvent
+}
+
+/** In-memory SDK observation; raw heading has no assumed unit or road-direction meaning. */
+data class NavigationLocation(val latitude: Double, val longitude: Double, val rawHeading: Double,
+    val nativeRouteId: String, val currentRouteIndex: Int?) {
+    fun valid() = latitude.isFinite() && longitude.isFinite() && rawHeading.isFinite() &&
+        latitude in -90.0..90.0 && longitude in -180.0..180.0 && nativeRouteId.isNotBlank() &&
+        nativeRouteId.length <= 300 && nativeRouteId.none(Char::isISOControl) &&
+        (currentRouteIndex == null || currentRouteIndex >= 0)
+    override fun toString() = "NavigationLocation(redacted)"
 }
 
 interface NavigationBackend {

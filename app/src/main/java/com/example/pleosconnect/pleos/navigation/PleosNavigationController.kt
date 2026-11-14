@@ -243,6 +243,7 @@ class PleosNavigationController(
             val attempt = pending
             if (attempt?.result?.isCompleted == true && event != NavigationEvent.Ended) return
             when (event) {
+                is NavigationEvent.Location -> Unit // Read-only context is held by observedVoiceRoute only.
                 NavigationEvent.RouteStarted -> {
                     consentGate.clear(); candidates.clear(); forceRevision = true
                     if (attempt != null) attempt.started = true

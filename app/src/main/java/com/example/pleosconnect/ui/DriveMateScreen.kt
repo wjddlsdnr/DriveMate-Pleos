@@ -51,6 +51,9 @@ fun DriveMateScreen(
     liveVoiceAvailable: Boolean = false, liveVoiceEnabled: Boolean = false,
     onVoiceMode: (Boolean) -> Unit = {}, onVoiceCheck: (Boolean) -> Unit = {},
     voiceConnectionNotice: String? = null,
+    nearbyAvailable: Boolean = false,
+    nearbyState: com.example.pleosconnect.pleos.navigation.NearbyDiscoveryState = com.example.pleosconnect.pleos.navigation.NearbyDiscoveryState(),
+    onPrepareNearby: (String) -> Unit = {}, onConfirmNearby: () -> Unit = {}, onCancelNearby: () -> Unit = {},
 ) {
     val profileActions = ProfileActions(onRegisterProfile, onSelectProfile, onSaveProfile, onDeleteProfile, onReloadProfiles)
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -58,7 +61,7 @@ fun DriveMateScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text("DriveMate", style = MaterialTheme.typography.headlineLarge)
+                    Text(androidx.compose.ui.res.stringResource(com.example.pleosconnect.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
                     Text("운전자 상태에 맞춘 주행 지원", style = MaterialTheme.typography.bodyLarge)
                 }
                 Text(if (state.realVoice) "실제 내비·음성 연결" else if (state.liveNavigation) "실제 내비 연동 점검" else "시뮬레이션 모드", Modifier.testTag("simulation-banner"),
@@ -71,6 +74,9 @@ fun DriveMateScreen(
                     Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
             }
             if (navigationState.available) NavigationPanel(state, navigationState, onLiveMode, onLiveDestination, onLiveResume, onLoadNavigationDestinations)
+            if (nearbyAvailable) com.example.pleosconnect.ui.navigation.NearbyDiscoveryPanel(nearbyState,
+                state.foreground && state.selectedProfileId != null && navigationState.enabled && !liveVoiceEnabled && mediaSetupAllowed(vehicleState),
+                onPrepareNearby, onConfirmNearby, onCancelNearby)
             if (vehicleState.available) com.example.pleosconnect.ui.vehicle.VehicleReadPanel(vehicleState, state.foreground, onVehicleRead)
             if (vehicleControlState.available) com.example.pleosconnect.ui.vehicle.VehicleControlPanel(vehicleControlState,
                 state.foreground && vehicleState.enabled && state.selectedProfileId != null,
