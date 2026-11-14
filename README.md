@@ -1,5 +1,50 @@
 # 쉼길
 
+## 공모전 제출 안내 — 두리두리
+
+- **팀명:** 두리두리
+- **앱 이름:** 쉼길
+- **앱 소개:** 운전자의 음성 응답과 현재 주행 경로를 바탕으로 컨디션을 재확인하고, 피로 시 휴식과 지원 가능한 주행 보조 기능을 안내하는 Pleos Connect 차량용 앱입니다.
+- **제출 브랜치:** `feature/b-integration`. 기본 `main` 브랜치의 초기 코드와 구분해 주세요. 접수 메일에 기재한 최종 커밋을 기준으로 소스와 APK를 함께 확인할 수 있습니다.
+- **Release APK:** [apk/두리두리_쉼길.release.apk](apk/두리두리_쉼길.release.apk)
+- **APK 다운로드:** [파일 다운로드](https://github.com/wjddlsdnr/DriveMate-Pleos/raw/refs/heads/feature/b-integration/apk/%EB%91%90%EB%A6%AC%EB%91%90%EB%A6%AC_%EC%89%BC%EA%B8%B8.release.apk)
+- **빌드/서명 정보:** [apk/BUILD_INFO.md](apk/BUILD_INFO.md), [SHA-256](apk/SHA256SUMS.txt)
+
+### 실행 방법
+
+1. Android Studio에서 Pleos Connect 에뮬레이터를 실행합니다. 일반 휴대전화가 아닌 AAOS/Pleos Connect 환경을 대상으로 합니다.
+2. 저장소 루트의 터미널에서 아래 명령으로 제출 APK를 설치하고 실행합니다.
+
+```powershell
+adb install "apk/두리두리_쉼길.release.apk"
+adb shell am start -n com.example.pleosconnect/.MainActivity
+```
+
+기존 Debug APK와 제출 Release APK는 서명이 다르므로 업데이트 설치가 거부될 수 있습니다. 기존 앱 데이터를 지우는 자동 제거는 하지 않으며, 별도 시험용 AVD 사용을 권장합니다.
+
+3. 프로필을 등록/선택하고 기본 시뮬레이션 화면에서 출발 확인 및 상태 확인을 시험합니다. 가상 응답·가상 동의를 실제 운전자 판단이나 실제 차량 제어 성공으로 해석하지 않습니다.
+4. 실제 SDK 시험은 사용자가 실제 내비 연결·차량 조회·음성 연결을 별도로 켭니다. 실제 음성은 연결을 켜기만 해서는 시작되지 않으며, 준비 후 ‘음성 출발 확인’을 눌러 시작합니다. 버튼 아래의 미충족 조건 안내를 확인합니다. 마이크 청취를 준비하지 않은 상태에서 전체 실제 SDK 계측을 일괄 실행하지 않습니다.
+
+### 테스트 환경과 필요한 설정
+
+- **에뮬레이터:** Pleos Connect v2.1.0, AVD `Pleos_Connect_v2.1.0`, Android API 34, x86_64.
+- **화면 규격:** AVD 설정 기준 2560×1440, density 160. 차량 시스템 UI가 앱에 할당하는 영역은 전체 화면보다 작을 수 있습니다.
+- **빌드 환경:** Gradle 9.6.0, AGP 9.5.1, Kotlin 2.2.10, compile/target SDK 37, min SDK 30. 실제 시험 기기의 API와 빌드 target SDK는 서로 다릅니다.
+- **Pleos SDK:** SpeechToText 3.3.1, TextToSpeech 3.3.1, NaviHelper 3.0.5, Vehicle 2.3.2. SDK 의존성은 Gradle로 해석하며 제한 SDK 바이너리를 소스 저장소에 별도 업로드하지 않습니다.
+- **실제 음성:** 호스트 마이크 입력과 Pleos STT/TTS 서비스가 사용 가능한 환경이 필요합니다. 실제 차량 조회는 해당 SDK 권한 및 속도 조회 권한이 필요합니다. 거부/미지원 상태를 성공으로 표시하지 않습니다.
+- **개인정보/키:** API 키·중계 토큰·개인 프로필·서명 개인키·비밀번호는 APK 제출 자료나 Git에 포함하지 않습니다. 프로필은 앱 전용 로컬 저장소에 보관합니다.
+
+### 제출 Release의 범위와 미검증 항목
+
+제출 APK는 versionName `1.0`, versionCode `1`, 패키지 `com.example.pleosconnect`의 서명된 Release입니다. 빌드·서명·ZIP 정렬 검증과 단위 테스트 474개 실패 0을 확인했습니다. 서명된 Release APK 자체의 새 기기 설치·실행/전체 심사 시나리오는 아직 별도로 검증하지 않았습니다.
+
+- Release에는 개발용 ‘테스트 음 선택’과 PC 로컬 중계 주변 검색이 포함되지 않습니다. Debug의 로컬 중계 시험 성공을 제출 Release의 검색 성공으로 표현하지 않습니다.
+- 외부 음악 앱은 공개 연동/로그인/검색 지원 범위에 의존하며, 실제 음악·뉴스 전체 연동과 실제 차량 변경·복원은 미완료 또는 미검증입니다.
+- 주변 검색의 앱 버튼→결과 표시 전체 흐름과 실제 발화→상태 판단→재생→질문 전 중단의 안정적인 전체 통합 검증도 남아 있습니다. 현재 관측한 한계와 재현 조건은 [최신 인수인계](docs/B_HANDOFF.md), [주변 검색 앱 연결](docs/NEARBY_APP_INTEGRATION.md)에 기록했습니다.
+- 차량 설정/경로 변경과 복원에는 별도의 명시적 동의가 필요하며 조향·제동·주행 중 좌석 이동·자동 긴급 신고는 제공하지 않습니다.
+
+아래 소개와 Phase 설명에는 과거 단계의 기록이 포함됩니다. 현재 제출 버전의 실행 방법/환경/APK 위치는 이 제출 안내와 해당 커밋의 소스를 우선 확인해 주세요.
+
 서비스 이름을 DriveMate에서 쉼길로 변경했습니다. 저장소·패키지·내부 클래스 이름과 과거 검증 기록에는 기존 이름이 남아 있습니다.
 
 현대자동차그룹 Pleos Connect 차량용 앱 공모전 프로젝트.
