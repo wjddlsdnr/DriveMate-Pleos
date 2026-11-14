@@ -5,9 +5,9 @@
 - **팀명:** 두리두리
 - **앱 이름:** 쉼길
 - **앱 소개:** 운전자의 음성 응답과 현재 주행 경로를 바탕으로 컨디션을 재확인하고, 피로 시 휴식과 지원 가능한 주행 보조 기능을 안내하는 Pleos Connect 차량용 앱입니다.
-- **제출 브랜치:** `feature/b-integration`. 기본 `main` 브랜치의 초기 코드와 구분해 주세요. 접수 메일에 기재한 최종 커밋을 기준으로 소스와 APK를 함께 확인할 수 있습니다.
+- **제출 브랜치:** `main`. 작업 브랜치에서 `develop`을 거쳐 PR로 반영한 제출 버전입니다. 접수 메일에 기재한 최종 `main` 커밋을 기준으로 소스와 APK를 함께 확인할 수 있습니다.
 - **Release APK:** [apk/두리두리_쉼길.release.apk](apk/두리두리_쉼길.release.apk)
-- **APK 다운로드:** [파일 다운로드](https://github.com/wjddlsdnr/DriveMate-Pleos/raw/refs/heads/feature/b-integration/apk/%EB%91%90%EB%A6%AC%EB%91%90%EB%A6%AC_%EC%89%BC%EA%B8%B8.release.apk)
+- **APK 다운로드:** [파일 다운로드](https://github.com/wjddlsdnr/DriveMate-Pleos/raw/refs/heads/main/apk/%EB%91%90%EB%A6%AC%EB%91%90%EB%A6%AC_%EC%89%BC%EA%B8%B8.release.apk)
 - **빌드/서명 정보:** [apk/BUILD_INFO.md](apk/BUILD_INFO.md), [SHA-256](apk/SHA256SUMS.txt)
 
 ### 실행 방법
