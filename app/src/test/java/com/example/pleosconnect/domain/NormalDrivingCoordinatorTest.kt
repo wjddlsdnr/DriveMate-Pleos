@@ -47,6 +47,9 @@ class NormalDrivingCoordinatorTest {
         }
         val prompts = mutableListOf<String>()
         var answer: RecognitionResult = RecognitionResult.Text("조용히")
+        val answers = ArrayDeque<RecognitionResult>()
+        val voiceEvents = mutableListOf<String>()
+        var speakGate: CompletableDeferred<Unit>? = null
         var listenGate: CompletableDeferred<RecognitionResult>? = null
         var onListen: () -> Unit = {}
         var speechFailure: FailureReason? = null
@@ -56,10 +59,14 @@ class NormalDrivingCoordinatorTest {
             override val phase = MutableStateFlow(VoicePhase.IDLE)
             override suspend fun speak(text: String): OperationResult<Unit> {
                 prompts += text
+                voiceEvents += "speak"
+                speakGate?.await()
+                voiceEvents += "ttsDone"
                 return speechFailure?.let { OperationResult.Failure(it) } ?: OperationResult.Success(Unit)
             }
             override suspend fun listen(timeout: Duration): RecognitionResult {
-                listens++; onListen(); return listenGate?.await() ?: answer
+                voiceEvents += "listen"
+                listens++; onListen(); return listenGate?.await() ?: answers.removeFirstOrNull() ?: answer
             }
             override suspend fun stop() { voiceStops++ }
             override suspend fun close() = Unit
@@ -99,7 +106,7 @@ class NormalDrivingCoordinatorTest {
         assertTrue("뉴스" in f.saved.last().contentPreferences)
     }
     @Test fun stopMeansQuietAndNextOnlyWorksInMusicMode() = runTest {
-        val f = Fixture(this); f.command("다음 곡")
+        val f = Fixture(this); f.answer = RecognitionResult.Text("모르겠어"); f.command("다음 곡")
         assertTrue(f.commands.isEmpty()); assertEquals(NormalModePhase.CLARIFY, f.status.phase)
         f.command("발라드 틀어줘"); val saves = f.saved.size; f.command("다음 곡")
         assertEquals(MediaCommand.Next, f.commands.last()); assertEquals(saves, f.saved.size)
@@ -133,7 +140,7 @@ class NormalDrivingCoordinatorTest {
     @Test fun ambiguousOrNegatedPreferenceIsNotSavedAndDoesNotLoop() = runTest {
         listOf("발라드 말고 재즈", "가수 아이유 안 좋아해", "음악 틀어줘", "모르겠어").forEach {
             val f = Fixture(this); f.answer = RecognitionResult.Text(it); f.command("음악 틀어줘")
-            assertEquals(1, f.listens); assertEquals(NormalModePhase.CLARIFY, f.status.phase)
+            assertEquals(2, f.listens); assertEquals(NormalModePhase.CLARIFY, f.status.phase)
             assertTrue(f.commands.isEmpty()); assertTrue(f.saved.isEmpty())
         }
     }
@@ -284,9 +291,42 @@ class NormalDrivingCoordinatorTest {
         assertEquals(NormalModePhase.BLOCKED, f.status.phase); assertTrue(f.saved.isEmpty())
     }
     @Test fun unknownCommandDoesNotExecuteOrPersist() = runTest {
-        val f = Fixture(this); f.command("음악 틀지 말고 뉴스 틀어줘")
+        val f = Fixture(this); f.answer = RecognitionResult.Text("모르겠어"); f.command("음악 틀지 말고 뉴스 틀어줘")
         assertEquals(NormalModePhase.CLARIFY, f.status.phase)
-        assertEquals(1, f.prompts.size); assertTrue(f.commands.isEmpty()); assertTrue(f.saved.isEmpty())
+        assertEquals(2, f.prompts.size); assertTrue(f.commands.isEmpty()); assertTrue(f.saved.isEmpty())
+    }
+    @Test fun declinePreviousModeListensAgainAndExecutesLocalAlias() = runTest {
+        val f = Fixture(this)
+        f.profile.value = f.profile.value!!.copy(previousMode = DrivingMode.COMPANION)
+        f.answers.addAll(listOf(RecognitionResult.Text("아니요"), RecognitionResult.Text("로컬 파일 틀어줘")))
+        f.coordinator.offerMode()
+        assertEquals(2, f.listens)
+        assertEquals(listOf("speak", "ttsDone", "listen", "speak", "ttsDone", "listen"), f.voiceEvents)
+        assertEquals(listOf(MediaCommand.Stop, MediaCommand.PlayMusic("로컬 파일")), f.commands)
+        assertEquals(DrivingMode.MUSIC, f.status.mode)
+    }
+    @Test fun repeatedAmbiguityStopsAfterOneClarification() = runTest {
+        val f = Fixture(this); f.answer = RecognitionResult.Text("아니요")
+        f.coordinator.offerMode()
+        assertEquals(2, f.listens); assertEquals(3, f.prompts.size)
+        assertEquals(NormalModePhase.CLARIFY, f.status.phase)
+        assertTrue(f.commands.isEmpty()); assertTrue(f.saved.isEmpty())
+    }
+    @Test fun repromptDoesNotListenUntilTtsCompletesAndCancelsOnDanger() = runTest {
+        val f = Fixture(this); f.speakGate = CompletableDeferred()
+        val task = launch { f.command("모르겠어") }; runCurrent()
+        assertEquals(0, f.listens)
+        f.danger(); runCurrent(); task.join()
+        assertEquals(0, f.listens); assertTrue(f.voiceStops > 0)
+        assertEquals(NormalModePhase.BLOCKED, f.status.phase)
+    }
+    @Test fun repromptRecognitionFailuresNeverExecuteMedia() = runTest {
+        listOf(RecognitionResult.NoResponse, RecognitionResult.Timeout, RecognitionResult.PermissionDenied,
+            RecognitionResult.ServiceUnavailable, RecognitionResult.RecognitionFailure).forEach {
+            val f = Fixture(this); f.answer = it; f.command("わからない")
+            assertEquals(1, f.listens); assertEquals(NormalModePhase.FAILED, f.status.phase)
+            assertTrue(f.commands.isEmpty()); assertTrue(f.saved.isEmpty())
+        }
     }
     @Test fun invalidCommandTimeIsRejectedBeforeSideEffects() = runTest {
         val f = Fixture(this)

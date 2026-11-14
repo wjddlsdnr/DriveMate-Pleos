@@ -93,6 +93,13 @@ class RestSessionCoordinatorTest {
         assertEquals(1, f.requests); assertEquals(ConsentScope.RESUME_ROUTE, f.consent?.scope)
         assertNull(f.checkpoint); assertEquals(RestPhase.RESUMED, f.c.status.value.phase)
     }
+    @Test fun negativeFatigueAnswersStillRequireTwoChecksAndSeparateResumeConsent() = runTest {
+        val f = Fixture(testScheduler); f.answer("아니요", "아니"); f.expire()
+        assertEquals(RestPhase.READY_TO_RESUME, f.c.status.value.phase)
+        assertEquals(0, f.requests)
+        f.answer("아니요"); f.c.resume()
+        assertEquals(RestPhase.DECLINED, f.c.status.value.phase); assertEquals(0, f.requests)
+    }
     @Test fun oneNormalThenSilenceDoesNotResume() = runTest {
         val f = Fixture(testScheduler); f.answer("괜찮아"); f.expire(); f.c.resume()
         assertEquals(0, f.requests); assertEquals(DriverState.RECOVERY_CHECK, f.driver.status.value.state)

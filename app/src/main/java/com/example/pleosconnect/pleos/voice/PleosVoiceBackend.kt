@@ -18,6 +18,7 @@ import com.example.pleosconnect.contract.model.FailureReason
 import com.example.pleosconnect.contract.model.OperationResult
 import com.example.pleosconnect.contract.voice.RecognitionResult
 import com.example.pleosconnect.voice.VoiceBackend
+import com.example.pleosconnect.voice.testPhraseMatch
 import kotlinx.coroutines.*
 import java.util.Locale
 
@@ -35,6 +36,7 @@ class PleosVoiceBackend(
         runCatching { diagnostic(VoiceDiagnostic(event, length)) }
     }
     private val appContext = context.applicationContext
+    private val debugDiagnostics = appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val audio = appContext.getSystemService(AudioManager::class.java)
     private var closed = false
     private var poisoned = false
@@ -107,6 +109,9 @@ class PleosVoiceBackend(
             override fun onUpdatedRms(rms: Double) { if (rms.isFinite() && rms > 0) trace("STT_RMS_ACTIVE") }
             override fun onUpdated(stt: String, completed: Boolean) {
                 trace(if (completed) "STT_FINAL" else "STT_INTERIM", stt.length)
+                if (completed && debugDiagnostics) {
+                    trace("STT_FINAL_TEST_${testPhraseMatch(stt).name}")
+                }
                 result.update(stt, completed)
                 if (completed) done.complete(result.ended())
             }

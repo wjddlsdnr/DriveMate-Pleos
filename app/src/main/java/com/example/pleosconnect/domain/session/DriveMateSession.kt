@@ -96,12 +96,20 @@ class DriveMateSession(
         checkCondition(CheckKind.PERIODIC)
         if (driver.status.value.state == DriverState.NORMAL && driver.status.value.report == ConditionReport.NORMAL) normal.offerMode()
     }
-    suspend fun conditionCheck(kind: CheckKind = CheckKind.RISK_FOLLOW_UP) = execute(priority = true) { checkCondition(kind) }
+    suspend fun conditionCheck(kind: CheckKind = CheckKind.RISK_FOLLOW_UP) = execute(priority = true) {
+        // This explicit check also satisfies questions already due (including departure).
+        // Keep future periodic/risk checks; otherwise the next tick repeats this question.
+        scheduler.takeDue()
+        checkCondition(kind)
+    }
     private suspend fun checkCondition(kind: CheckKind) {
         if (driver.status.value.state == DriverState.RESTING || navigation.route.value == null) return
-        val answer = ask(if (kind == CheckKind.RECOVERY) "현재 상태가 나아지셨나요? 졸리거나 피곤하신가요?" else "현재 졸리거나 피곤하신가요?")
+        var answer = ask("현재 졸리거나 피곤하신가요?")
+        if (ConditionQuestion.FATIGUE.needsNormalConfirmation(answer)) {
+            answer = ask("상태를 한 번 더 확인하겠습니다. 현재 졸리거나 피곤하신가요?")
+        }
         delay(1)
-        safety.onConditionAnswer(answer, clock.nowMillis())
+        safety.onConditionAnswer(com.example.pleosconnect.domain.ConditionQuestion.FATIGUE.interpret(answer), clock.nowMillis())
         refresh()
         if (snapshot.value.restStopNeeded) guidance.request()
     }

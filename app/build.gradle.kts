@@ -4,6 +4,7 @@ plugins {
 }
 
 android {
+    useLibrary("android.car")
     namespace = "com.example.pleosconnect"
     compileSdk {
         version = release(37)
@@ -37,6 +38,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.pleos.vehicle)
+    implementation(libs.pleos.navi.helper)
     implementation("ai.pleos.playground:SpeechToText:3.3.1")
     implementation("ai.pleos.playground:TextToSpeech:3.3.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
@@ -49,6 +52,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

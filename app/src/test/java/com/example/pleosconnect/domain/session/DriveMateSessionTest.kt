@@ -16,6 +16,22 @@ import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DriveMateSessionTest {
+    @Test fun questionMarkedReassuranceRequiresOneExplicitConfirmation() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.answer("괜찮아요?", "안 졸려")
+        f.session.conditionCheck()
+        assertEquals(2, f.events.count { it == "listen" })
+        assertEquals(ConditionReport.NORMAL, f.session.driverStatus.value.report)
+        f.session.close()
+    }
+    @Test fun repeatedQuestionMarkedReassuranceRemainsUnconfirmedWithoutLoop() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.answer("괜찮아요?", "괜찮아요?")
+        f.session.conditionCheck()
+        assertEquals(2, f.events.count { it == "listen" })
+        assertEquals(ConditionReport.UNCONFIRMED, f.session.driverStatus.value.report)
+        f.session.close()
+    }
     private class Fixture(val scope: CoroutineScope, val time: TestCoroutineScheduler) {
         var parking = SafeParking.NOT_PARKED
         val route = MutableStateFlow<RouteProgress?>(RouteProgress("trip", 1, 60.minutes, 0))
@@ -89,6 +105,44 @@ class DriveMateSessionTest {
             }, SafeParkingCheck { parking }, MonotonicClock { time.currentTime + 10 },
             object : RestSessionStore { override fun load() = checkpoint; override fun save(value: RestCheckpoint?) { checkpoint = value } })
         fun answer(vararg values: String) { answers.addAll(values.map { RecognitionResult.Text(it) }) }
+    }
+    @Test fun manualFirstCheckConsumesDueDepartureWithoutAnotherImmediateQuestion() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.answer("괜찮아요")
+        f.session.conditionCheck()
+        val prompts = f.prompts.size
+        advanceTimeBy(1_000); f.session.tick()
+        assertEquals(prompts, f.prompts.size)
+        assertEquals(ConditionReport.NORMAL, f.session.driverStatus.value.report)
+        advanceTimeBy(20 * 60_000)
+        f.answer("괜찮아요"); f.session.tick()
+        assertEquals(prompts + 1, f.prompts.size)
+        f.session.close()
+    }
+    @Test fun manualFirstFatigueCheckKeepsFollowUpInsteadOfImmediateDepartureRepeat() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.answer("조금 피곤해", "아니요")
+        f.session.conditionCheck()
+        val prompts = f.prompts.size
+        advanceTimeBy(1_000); f.session.tick()
+        assertEquals(prompts, f.prompts.size)
+        assertEquals(DriverState.CAUTION, f.session.driverStatus.value.state)
+        advanceTimeBy(5 * 60_000)
+        f.answer("계속 졸려", "아니요"); f.session.tick()
+        assertEquals(DriverState.WARNING, f.session.driverStatus.value.state)
+        assertEquals(1, f.searches)
+        f.session.close()
+    }
+    @Test fun contextualNoAndDeclinedModeConnectToLocalPlayback() = runTest {
+        val f = Fixture(backgroundScope, testScheduler); runCurrent()
+        f.profile.value = f.profile.value!!.copy(previousMode = DrivingMode.COMPANION)
+        f.answer("아니요", "아니요", "로컬 파일 틀어줘")
+        f.session.initialCheck()
+        assertEquals(DriverState.NORMAL, f.session.driverStatus.value.state)
+        assertEquals(DrivingMode.MUSIC, f.session.modeStatus.value.mode)
+        assertEquals(MediaCommand.PlayMusic("로컬 파일"), f.mediaCommands.last())
+        assertEquals(3, f.events.count { it == "listen" })
+        f.session.close()
     }
     @Test fun fullFakeTripFromDepartureThroughRestAndExplicitResume() = runTest {
         val f = Fixture(backgroundScope, testScheduler); runCurrent()
